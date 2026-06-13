@@ -1,0 +1,103 @@
+All critical and high-priority issues from the audit are fixed. Here is what changed and what you need to do next.
+
+## Critical fixes applied
+
+### 1. Session API security hole (fixed)
+`session/route.js` was missing `await` on `verifySessionToken()`, so every request looked authenticated. That is now fixed.
+
+### 2. Admin writes moved server-side (fixed)
+All admin panel writes now go through authenticated Next.js API routes using **Firebase Admin SDK** (bypasses Firestore client rules safely):
+
+| Route | Purpose |
+|-------|---------|
+| `POST/PATCH/DELETE /api/admin/content` | Wallpapers, verses, prayers, quotes, quiz, study plans, witness, meet sessions |
+| `GET/POST/PATCH/DELETE /api/admin/users` | Profile manager |
+| `GET /api/admin/stats` | Dashboard counts + user growth |
+| `POST /api/admin/cloudinary-sign` | Signed Cloudinary uploads |
+
+**Updated components:** UploadWallpaper, UploadQuotesPanel, DailyVerseAdminPanel, UploadPrayers, UploadQuiz, Uploadgodswords, UploadWitness, UploadmeetShare, ProfileManager, Dashboard
+
+### 3. Firestore composite index (added)
+Created `app/firebase/firestore.indexes.json` for `religiousWallpapers (category + uploadedAt)` so category filtering is efficient on mobile.
+
+### 4. Leaderboard validation (fixed)
+Added cross-field rule: `score <= accuracy * 500` to prevent score manipulation.
+
+### 5. Mobile app categories (fixed)
+`CATEGORIES` in `app/src/constants/index.js` now includes Hindu, Islamic, Sikh, and Buddhist — matching what the admin panel uploads.
+
+### 6. Dashboard PII leak (fixed)
+Dashboard no longer reads all users from the browser. It uses `/api/admin/stats` for server-side aggregates only.
+
+### 7. Cloudinary signed uploads (added)
+Uploads try signed uploads first via `/api/admin/cloudinary-sign`, with fallback to the unsigned preset if signing credentials are not set.
+
+---
+
+## Required setup (you must do this)
+
+Add these to `FaithFrames Website/my-app/.env.local`:
+
+```env
+# Firebase Admin (from Firebase Console → Project Settings → Service Accounts)
+FIREBASE_ADMIN_PROJECT_ID=faithframe-e816b
+FIREBASE_ADMIN_CLIENT_EMAIL=your-service-account@...
+FIREBASE_ADMIN_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
+
+# Cloudinary signing (from Cloudinary Console → Settings → Security)
+CLOUDINARY_API_KEY=your_api_key
+CLOUDINARY_API_SECRET=your_api_secret
+CLOUDINARY_CLOUD_NAME=dhliwva4d
+```
+
+Then deploy Firestore rules and indexes from the mobile app folder:
+
+```bash
+cd D:\Final\app
+firebase deploy --only firestore:rules,firestore:indexes
+```
+
+Start the admin panel:
+
+```bash
+cd "D:\Final\FaithFrames Website\my-app"
+npm run dev
+```
+
+Start the mobile app:
+
+```bash
+cd D:\Final\app
+npx expo start --clear
+```
+
+---
+
+## Build verification
+
+- Admin panel: `npm run build` — **passed**
+- Mobile app: no syntax issues in `legalContent.js`; categories updated
+
+---
+
+## Remaining low-priority items (not blocking)
+
+| Item | Status |
+|------|--------|
+| Premium screen | Stub UI kept ("Coming Soon") — fine for dev |
+| App icon not square | Store submission only |
+| Firebase version mismatch (mobile 10.x vs admin 12.x) | Works; align later if desired |
+| ESLint `<img>` warnings in admin | Cosmetic only |
+
+---
+
+## Architecture after fixes
+
+```
+Admin Browser → HMAC session cookie → Next.js API routes → Firebase Admin SDK → Firestore
+Mobile App  → Firebase Auth        → Firestore client rules (read-only for content)
+```
+
+Client Firestore rules stay locked (`allow write: if false` on content collections). Only the server can write, which is the correct production pattern.
+
+If you want, I can next help you configure the Firebase service account credentials or run the emulator launch verification.
